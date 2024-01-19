@@ -32,7 +32,6 @@
             formData.forEach((value, key) => {
                 jsonData[key] = value;
             });
-
             fetch('http://localhost:8080/login', {
                 method: 'POST',
                 headers: {
