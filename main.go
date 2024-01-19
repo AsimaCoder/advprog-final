@@ -33,9 +33,10 @@ type Furniture struct {
 }
 
 type User struct {
-	Name     string `json:"Name"`
-	Email    string `json:"Email"`
-	Password string `json:"Password"`
+	ID       primitive.ObjectID `json:"_id,omitempty" bson:"_id,omitempty"`
+	Name     string             `json:"Name"`
+	Email    string             `json:"Email"`
+	Password string             `json:"Password"`
 }
 
 var inventory = []Furniture{
@@ -96,7 +97,73 @@ func registerUser(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{"message": "User registered successfully", "userID": result.InsertedID})
 }
+func updateUser(c *gin.Context) {
+	var updateData struct {
+		ID    string `json:"id"`
+		Name  string `json:"name"`
+		Email string `json:"email"`
+	}
+	if err := c.ShouldBindJSON(&updateData); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
 
+	objID, err := primitive.ObjectIDFromHex(updateData.ID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
+		return
+	}
+
+	usersCollection := database.Collection(collectionName)
+	_, err = usersCollection.UpdateOne(
+		context.Background(),
+		bson.M{"_id": objID},
+		bson.M{"$set": bson.M{"name": updateData.Name, "email": updateData.Email}},
+	)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error updating user"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "User updated successfully"})
+}
+
+func deleteUser(c *gin.Context) {
+	userID := c.Query("id")
+	objID, err := primitive.ObjectIDFromHex(userID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
+		return
+	}
+
+	usersCollection := database.Collection(collectionName)
+	_, err = usersCollection.DeleteOne(context.Background(), bson.M{"_id": objID})
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error deleting user"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "User deleted successfully"})
+}
+
+func getAllUsers(c *gin.Context) {
+	var users []User
+	usersCollection := database.Collection(collectionName)
+	cursor, err := usersCollection.Find(context.Background(), bson.M{})
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error fetching users"})
+		return
+	}
+	defer cursor.Close(context.Background())
+
+	for cursor.Next(context.Background()) {
+		var user User
+		cursor.Decode(&user)
+		users = append(users, user)
+	}
+
+	c.JSON(http.StatusOK, users)
+}
 func handleGetFurniture(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
@@ -160,13 +227,9 @@ func main() {
 	r.POST("/login", loginUser)
 	r.GET("/getFurniture", getFurniture)
 	r.POST("/submitOrder", submitOrder)
-
-	// // Additional CRUD operations routes
-	// r.POST("/createUser", createUser)
-	// r.GET("/getUser", getUserByID)
-	// r.PUT("/updateUser", updateUser) // Use PUT for updates
-	// r.DELETE("/deleteUser", deleteUser)
-	// r.GET("/getAllUsers", getAllUsers)
+	r.PUT("/updateUser", updateUser)
+	r.DELETE("/deleteUser", deleteUser)
+	r.GET("/getAllUsers", getAllUsers)
 
 	r.Static("/static", "./static/")
 	r.StaticFS("/auth", http.Dir("auth"))
@@ -259,64 +322,7 @@ func getUserByID(w http.ResponseWriter, r *http.Request) {
 
 	json.NewEncoder(w).Encode(user)
 }
-func updateUser(w http.ResponseWriter, r *http.Request) {
-	userID := r.URL.Query().Get("id")
-	objID, _ := primitive.ObjectIDFromHex(userID)
 
-	var updateData struct {
-		Name string `json:"name"`
-	}
-	err := json.NewDecoder(r.Body).Decode(&updateData)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	usersCollection := database.Collection(collectionName)
-	_, err = usersCollection.UpdateOne(
-		context.Background(),
-		bson.M{"_id": objID},
-		bson.M{"$set": bson.M{"name": updateData.Name, "updated_at": time.Now()}},
-	)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	w.WriteHeader(http.StatusNoContent)
-}
-func deleteUser(w http.ResponseWriter, r *http.Request) {
-	userID := r.URL.Query().Get("id")
-	objID, _ := primitive.ObjectIDFromHex(userID)
-
-	usersCollection := database.Collection(collectionName)
-	_, err := usersCollection.DeleteOne(context.Background(), bson.M{"_id": objID})
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	w.WriteHeader(http.StatusNoContent)
-}
-func getAllUsers(w http.ResponseWriter, r *http.Request) {
-	var users []User
-	usersCollection := database.Collection(collectionName)
-	cursor, err := usersCollection.Find(context.Background(), bson.M{})
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	defer cursor.Close(context.Background())
-
-	for cursor.Next(context.Background()) {
-		var user User
-		cursor.Decode(&user)
-		users = append(users, user)
-	}
-
-	json.NewEncoder(w).Encode(users)
-
-}
 func loginUser(c *gin.Context) {
 	var loginRequest struct {
 		Email    string `json:"email"`
