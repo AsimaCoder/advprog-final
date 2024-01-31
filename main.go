@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/gin-contrib/cors"
@@ -168,16 +169,78 @@ func getAllUsers(c *gin.Context) {
 
 	c.JSON(http.StatusOK, users)
 }
+func getOrderValues(order string) int {
+	switch order {
+	case "asc":
+		return 1
+	case "desc":
+		return -1
+	default:
+		return 1
+	}
+}
+
 func getFurnitures(c *gin.Context) {
 	var furniture []Furniture
 
 	collectionName2 := client.Database(databaseName).Collection(collectionName2)
-	cursor, err := collectionName2.Find(context.TODO(), bson.M{})
+
+	sortParam := c.Query("sort")
+	sortOrder := c.Query("order")
+	minPrice := c.Query("minPrice")
+	maxPrice := c.Query("maxPrice")
+
+	page, err := strconv.Atoi(c.Query("page"))
+	if err != nil || page < 1 {
+		page = 1
+	}
+
+	itemsPerPage, err := strconv.Atoi(c.Query("itemsPerPage"))
+	if err != nil || itemsPerPage < 1 {
+		itemsPerPage = 10
+	}
+
+	options := options.Find()
+
+	switch sortParam {
+	case "title":
+		options.SetSort(bson.D{{"title", getOrderValues(sortOrder)}})
+	case "price":
+		options.SetSort(bson.D{{"price", getOrderValues(sortOrder)}})
+
+	}
+
+	filter := bson.M{}
+	if minPrice != "" {
+		minPriceFloat, err := strconv.ParseFloat(minPrice, 64)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid minPrice value"})
+			return
+		}
+		filter["price"] = bson.M{"$gte": minPriceFloat}
+	}
+	if maxPrice != "" {
+		maxPriceFloat, err := strconv.ParseFloat(maxPrice, 64)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid maxPrice value"})
+			return
+		}
+		if _, exists := filter["price"]; exists {
+			filter["price"].(bson.M)["$lte"] = maxPriceFloat
+		} else {
+			filter["price"] = bson.M{"$lte": maxPriceFloat}
+		}
+	}
+
+	skip := (page - 1) * itemsPerPage
+	options.SetSkip(int64(skip))
+	options.SetLimit(int64(itemsPerPage))
+
+	cursor, err := collectionName2.Find(context.TODO(), filter, options)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error while getting furniture data"})
 		return
 	}
-	/*defer cursor.Close(context.TODO())*/
 
 	for cursor.Next(context.TODO()) {
 		var furnitureItem Furniture
@@ -191,7 +254,10 @@ func getFurnitures(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, furniture)
-	fmt.Println(furniture)
+}
+
+func getOrderValue(sortOrder string) {
+	panic("unimplemented")
 }
 
 func handlePostOrder(w http.ResponseWriter, r *http.Request) {
