@@ -1,31 +1,29 @@
-<!DOCTYPE html>
-<html lang="en">
+func getFurniture(c *gin.Context) {
+    // Setup MongoDB client and context
+    client, err := mongo.Connect(context.TODO(), options.Client().ApplyURI("your-mongodb-uri"))
+    if err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+        return
+    }
+    defer client.Disconnect(context.TODO())
 
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="stylesheet" href="/static/style.css">
-    <title>Furniture - Online Furniture Shop</title>
-</head>
+    // Select the furniture collection
+    collection := client.Database("your-database-name").Collection("furniture")
 
-<body>
-    <h1>Furniture - Online Furniture Shop</h1>
+    // Query the collection
+    cursor, err := collection.Find(context.TODO(), bson.D{{}})
+    if err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+        return
+    }
+    defer cursor.Close(context.TODO())
 
-    <div id="furniture-container"></div>
+    var furnitures []Furniture
+    if err = cursor.All(context.TODO(), &furnitures); err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+        return
+    }
 
-    <script>
-        fetch('/furniture')
-            .then(response => response.json())
-            .then(data => {
-                const container = document.getElementById('furniture-container');
-                data.forEach(furniture => {
-                    const div = document.createElement('div');
-                    div.innerHTML = `<h2>${furniture.title}</h2><p>${furniture.description}</p>`;
-                    container.appendChild(div);
-                });
-            })
-            .catch(error => console.error('Error:', error));
-    </script>
-    </body>
-
-</html>
+    // Send response as JSON
+    c.JSON(http.StatusOK, furnitures)
+}
