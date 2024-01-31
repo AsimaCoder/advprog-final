@@ -6,50 +6,96 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="/static/style.css">
     <title>Furniture - Online Furniture Shop</title>
-        <style>
+    <style>
         #furniture-container {
             display: flex;
             flex-wrap: wrap;
             gap: 10px;
         }
+
         .furniture-card {
             border: 1px solid #ddd;
             padding: 10px;
             border-radius: 5px;
             width: 200px;
         }
+
         .furniture-card img {
             max-width: 100%;
             height: auto;
             border-radius: 5px;
         }
+
         .furniture-title {
             font-size: 1.1em;
             margin: 5px 0;
         }
+
         .furniture-price {
             font-weight: bold;
+        }
+
+        #page {
+            width: 50px;
         }
     </style>
 </head>
 
 <body>
     <h1>Furniture - Online Furniture Shop</h1>
+    <div>
+        <label for="minPrice">Min Price:</label>
+        <input type="number" id="minPrice" placeholder="Min Price">
 
+        <label for="maxPrice">Max Price:</label>
+        <input type="number" id="maxPrice" placeholder="Max Price">
+
+        <button onclick="applyFilter()">Apply Filter</button>
+
+    </div>
+
+    <div>
+        <label for="sortDropdown">Sort by:</label>
+        <select id="sortDropdown">
+            <option value="name_asc">A to Z</option>
+            <option value="name_desc">Z to A</option>
+            <option value="price_asc">0 - More</option>
+            <option value="price_desc">More - 0</option>
+        </select>
+        <button onclick="applySorting()">Apply Sorting</button>
+    </div>
+    <div>
+        <button onclick="loadPreviousPage()">Previous</button>
+
+        <label for="itemsPerPage">Items per Page:</label>
+        <input type="number" id="itemsPerPage" placeholder="Items per Page" value="10">
+
+
+        <button onclick="loadNextPage()">Next</button>
+    </div>
     <div id="furniture-container"></div>
 
     <script>
-        async function loadFurniture() {
-            const container = document.getElementById('furniture-container');
+        let currentPage = 1;
+        const itemsPerPage = 10;
+
+        const container = document.getElementById('furniture-container');
+        const pageInput = document.getElementById('page');
+
+        async function loadFurniture(sortBy, sortOrder, minPrice, maxPrice, page, itemsPerPage) {
             try {
-                const response = await fetch('/furniture');
+                page = page && page >= 1 ? page : 1;
+
+                const apiUrl = `/furniture?sort=${sortBy}&order=${sortOrder}&minPrice=${minPrice || ''}&maxPrice=${maxPrice || ''}&page=${page}&itemsPerPage=${itemsPerPage}`;
+
+                const response = await fetch(apiUrl);
                 if (!response.ok) {
                     throw new Error(`HTTP error! Status: ${response.status}`);
                 }
+
                 const data = await response.json();
 
                 const fragment = document.createDocumentFragment();
-
                 data.forEach(furniture => {
                     const card = document.createElement('div');
                     card.className = 'furniture-card';
@@ -60,7 +106,7 @@
 
                     const pictures = document.createElement('img');
                     if (furniture.pictures && furniture.pictures.length > 0) {
-                        pictures.src = furniture.pictures[0]; // Assuming the first picture is the primary one
+                        pictures.src = furniture.pictures[0];
                         pictures.alt = furniture.title;
                     }
 
@@ -75,16 +121,106 @@
                     fragment.appendChild(card);
                 });
 
+                container.innerHTML = '';
                 container.appendChild(fragment);
+
+                currentPage = page;
+                if (pageInput) {
+                    pageInput.value = currentPage;
+                }
             } catch (error) {
                 console.error('Error:', error);
                 container.textContent = 'Failed to load furniture data.';
             }
         }
+        function applyFilter() {
+            minPrice = document.getElementById('minPrice').value;
+            maxPrice = document.getElementById('maxPrice').value;
+            const sortDropdown = document.getElementById('sortDropdown');
+            const selectedValue = sortDropdown.value;
 
-        loadFurniture();
+            switch (selectedValue) {
+                case 'name_asc':
+                    sortBy = 'title';
+                    sortOrder = 'asc';
+                    break;
+                case 'name_desc':
+                    sortBy = 'title';
+                    sortOrder = 'desc';
+                    break;
+                case 'price_asc':
+                    sortBy = 'price';
+                    sortOrder = 'asc';
+                    break;
+                case 'price_desc':
+                    sortBy = 'price';
+                    sortOrder = 'desc';
+                    break;
+                default:
+                    sortBy = 'title';
+                    sortOrder = 'asc';
+            }
+
+            loadFurniture(sortBy, sortOrder, minPrice, maxPrice, currentPage, itemsPerPage);
+        }
+
+
+        function applySorting() {
+            const sortDropdown = document.getElementById('sortDropdown');
+            const selectedValue = sortDropdown.value;
+
+            let sortBy;
+            let sortOrder;
+
+            switch (selectedValue) {
+                case 'name_asc':
+                    sortBy = 'title';
+                    sortOrder = 'asc';
+                    break;
+                case 'name_desc':
+                    sortBy = 'title';
+                    sortOrder = 'desc';
+                    break;
+                case 'price_asc':
+                    sortBy = 'price';
+                    sortOrder = 'asc';
+                    break;
+                case 'price_desc':
+                    sortBy = 'price';
+                    sortOrder = 'desc';
+                    break;
+                default:
+                    sortBy = 'title';
+                    sortOrder = 'asc';
+            }
+
+            loadFurniture(sortBy, sortOrder);
+        }
+        applySorting();
+
+
+        function applyPagination() {
+            itemsPerPage = document.getElementById('itemsPerPage').value;
+            const page = document.getElementById('page').value;
+
+            loadFurniture(sortBy, sortOrder, minPrice, maxPrice, page, itemsPerPage);
+        }
+
+
+        function loadPreviousPage() {
+            if (currentPage > 1) {
+                loadFurniture(sortBy, sortOrder, minPrice, maxPrice, currentPage - 1, itemsPerPage);
+            }
+        }
+
+        function loadNextPage() {
+            loadFurniture(sortBy, sortOrder, minPrice, maxPrice, currentPage + 1, itemsPerPage);
+        }
+
+
+        // Initial load
+        loadFurniture('title', 'asc', undefined, undefined, currentPage, itemsPerPage);
     </script>
-    
-    </body>
+</body>
 
 </html>
