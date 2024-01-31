@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="/static/style.css">
+    <title>Furniture - Online Furniture Shop</title>
+</head>
+
+<body>
+    <h1>Furniture - Online Furniture Shop</h1>
+
+    <div id="furniture-container"></div>
+
+    <script>
+        fetch('/furniture')
+            .then(response => response.json())
+            .then(data => {
+                const container = document.getElementById('furniture-container');
+                data.forEach(furniture => {
+                    const div = document.createElement('div');
+                    div.innerHTML = `<h2>${furniture.title}</h2><p>${furniture.description}</p>`;
+                    container.appendChild(div);
+                });
+            })
+            .catch(error => console.error('Error:', error));
+    </script>
+    </body>
+
+</html>
