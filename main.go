@@ -17,9 +17,10 @@ import (
 )
 
 const (
-	mongoURI       = "mongodb://localhost:27017"
-	databaseName   = "furnitureShopDB"
-	collectionName = "users"
+	mongoURI        = "mongodb://localhost:27017"
+	databaseName    = "furnitureShopDB"
+	collectionName  = "users"
+	collectionName2 = "furniture"
 )
 
 var client *mongo.Client
@@ -164,6 +165,31 @@ func getAllUsers(c *gin.Context) {
 
 	c.JSON(http.StatusOK, users)
 }
+func getFurnitures(c *gin.Context) {
+	var furniture []Furniture
+
+	furnitureCollection := client.Database(databaseName).Collection(collectionName2)
+	cursor, err := furnitureCollection.Find(context.TODO(), bson.M{})
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error while getting furniture data"})
+		return
+	}
+	defer cursor.Close(context.TODO())
+
+	for cursor.Next(context.TODO()) {
+		var furnitureItem Furniture
+		cursor.Decode(&furnitureItem)
+		furniture = append(furniture, furnitureItem)
+	}
+
+	if err := cursor.Err(); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error while getting furniture data"})
+		return
+	}
+
+	c.JSON(http.StatusOK, furniture)
+}
+
 func handleGetFurniture(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
@@ -226,6 +252,8 @@ func main() {
 	r.POST("/register", registerUser)
 	r.POST("/login", loginUser)
 	r.GET("/getFurniture", getFurniture)
+	r.GET("/furniture", getFurnitures)
+
 	r.POST("/submitOrder", submitOrder)
 	r.PUT("/updateUser", updateUser)
 	r.DELETE("/deleteUser", deleteUser)
