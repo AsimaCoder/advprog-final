@@ -1,29 +1,90 @@
-func getFurniture(c *gin.Context) {
-    // Setup MongoDB client and context
-    client, err := mongo.Connect(context.TODO(), options.Client().ApplyURI("your-mongodb-uri"))
-    if err != nil {
-        c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-        return
-    }
-    defer client.Disconnect(context.TODO())
+<!DOCTYPE html>
+<html lang="en">
 
-    // Select the furniture collection
-    collection := client.Database("your-database-name").Collection("furniture")
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="/static/style.css">
+    <title>Furniture - Online Furniture Shop</title>
+        <style>
+        #furniture-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        .furniture-card {
+            border: 1px solid #ddd;
+            padding: 10px;
+            border-radius: 5px;
+            width: 200px;
+        }
+        .furniture-card img {
+            max-width: 100%;
+            height: auto;
+            border-radius: 5px;
+        }
+        .furniture-title {
+            font-size: 1.1em;
+            margin: 5px 0;
+        }
+        .furniture-price {
+            font-weight: bold;
+        }
+    </style>
+</head>
 
-    // Query the collection
-    cursor, err := collection.Find(context.TODO(), bson.D{{}})
-    if err != nil {
-        c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-        return
-    }
-    defer cursor.Close(context.TODO())
+<body>
+    <h1>Furniture - Online Furniture Shop</h1>
 
-    var furnitures []Furniture
-    if err = cursor.All(context.TODO(), &furnitures); err != nil {
-        c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-        return
-    }
+    <div id="furniture-container"></div>
 
-    // Send response as JSON
-    c.JSON(http.StatusOK, furnitures)
-}
+    <script>
+        async function loadFurniture() {
+            const container = document.getElementById('furniture-container');
+            try {
+                const response = await fetch('/furniture');
+                if (!response.ok) {
+                    throw new Error(`HTTP error! Status: ${response.status}`);
+                }
+                const data = await response.json();
+
+                const fragment = document.createDocumentFragment();
+
+                data.forEach(furniture => {
+                    const card = document.createElement('div');
+                    card.className = 'furniture-card';
+
+                    const title = document.createElement('h2');
+                    title.className = 'furniture-title';
+                    title.textContent = furniture.title;
+
+                    const pictures = document.createElement('img');
+                    if (furniture.pictures && furniture.pictures.length > 0) {
+                        pictures.src = furniture.pictures[0]; // Assuming the first picture is the primary one
+                        pictures.alt = furniture.title;
+                    }
+
+                    const price = document.createElement('p');
+                    price.className = 'furniture-price';
+                    price.textContent = `Price: ${furniture.price}`;
+
+                    card.appendChild(pictures);
+                    card.appendChild(title);
+                    card.appendChild(price);
+
+                    fragment.appendChild(card);
+                });
+
+                container.appendChild(fragment);
+            } catch (error) {
+                console.error('Error:', error);
+                container.textContent = 'Failed to load furniture data.';
+            }
+        }
+
+        loadFurniture();
+    </script>
+    
+    </body>
+
+</html>
