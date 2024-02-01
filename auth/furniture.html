@@ -78,13 +78,19 @@
     <script>
         let currentPage = 1;
         const itemsPerPage = 10;
+        let sortBy = 'title';
+        let sortOrder = 'asc';
 
         const container = document.getElementById('furniture-container');
         const pageInput = document.getElementById('page');
 
+        function getUserID() {
+            return localStorage.getItem('userID');
+        }
         async function loadFurniture(sortBy, sortOrder, minPrice, maxPrice, page, itemsPerPage) {
             try {
                 page = page && page >= 1 ? page : 1;
+                const userID = await getUserID();
 
                 const apiUrl = `/furniture?sort=${sortBy}&order=${sortOrder}&minPrice=${minPrice || ''}&maxPrice=${maxPrice || ''}&page=${page}&itemsPerPage=${itemsPerPage}`;
 
@@ -134,8 +140,8 @@
             }
         }
         function applyFilter() {
-            minPrice = document.getElementById('minPrice').value;
-            maxPrice = document.getElementById('maxPrice').value;
+            const minPrice = document.getElementById('minPrice').value;
+            const maxPrice = document.getElementById('maxPrice').value;
             const sortDropdown = document.getElementById('sortDropdown');
             const selectedValue = sortDropdown.value;
 
@@ -161,17 +167,15 @@
                     sortOrder = 'asc';
             }
 
+            const userID = getUserID();
             loadFurniture(sortBy, sortOrder, minPrice, maxPrice, currentPage, itemsPerPage);
+            logUserAction('applyFilter', userID);
         }
-
 
         function applySorting() {
             const sortDropdown = document.getElementById('sortDropdown');
             const selectedValue = sortDropdown.value;
 
-            let sortBy;
-            let sortOrder;
-
             switch (selectedValue) {
                 case 'name_asc':
                     sortBy = 'title';
@@ -194,7 +198,9 @@
                     sortOrder = 'asc';
             }
 
+            const userID = getUserID();
             loadFurniture(sortBy, sortOrder);
+            logUserAction('applySorting', userID);
         }
         applySorting();
 
@@ -209,12 +215,40 @@
 
         function loadPreviousPage() {
             if (currentPage > 1) {
-                loadFurniture(sortBy, sortOrder, minPrice, maxPrice, currentPage - 1, itemsPerPage);
+                const userID = getUserID();
+                loadFurniture(sortBy, sortOrder, undefined, undefined, currentPage - 1, itemsPerPage);
+                logUserAction('loadPreviousPage', userID);
             }
         }
 
         function loadNextPage() {
-            loadFurniture(sortBy, sortOrder, minPrice, maxPrice, currentPage + 1, itemsPerPage);
+            const userID = getUserID();
+            loadFurniture(sortBy, sortOrder, undefined, undefined, currentPage + 1, itemsPerPage);
+            logUserAction('loadNextPage', userID);
+        }
+        function logUserAction(action, userID) {
+            fetch('http://localhost:8080/logUserAction', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    action: action,
+                    userID: userID,
+                }),
+            })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! Status: ${response.status}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    console.log(data);
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                });
         }
 
 
