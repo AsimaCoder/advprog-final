@@ -32,6 +32,8 @@
             formData.forEach((value, key) => {
                 jsonData[key] = value;
             });
+
+
             fetch('http://localhost:8080/login', {
                 method: 'POST',
                 headers: {
@@ -47,8 +49,11 @@
                 })
                 .then(data => {
                     displayLoginResponse(`Login Successful: ${data.message}`, 'success');
+
+                    logUserAction("login", data.email);
                 })
                 .catch((error) => {
+
                     displayLoginResponse(`Login Error: ${error.message}`, 'error');
                 });
         }
@@ -57,6 +62,35 @@
             const responseDiv = document.getElementById("loginResponse");
             responseDiv.innerHTML = `<div class="${type}">${message}</div>`;
         }
+        function logUserAction(action, userID) {
+            const data = {
+                action: action,
+                userID: userID,
+            };
+
+            fetch('http://localhost:8080/logUserAction', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(data),
+            })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! Status: ${response.status}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    console.log(`User action logged successfully: ${data.message}`);
+
+                })
+                .catch((error) => {
+                    console.error(`Error logging user action: ${error.message}`);
+                    console.error(error);
+                });
+        }
+
     </script>
 </body>
 
