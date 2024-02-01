@@ -51,11 +51,12 @@
                 })
                 .then(data => {
                     console.log(data);
-                    // Handle success
+                    logUserAction("register", data.userID);
+
                 })
                 .catch(error => {
                     console.error("Error:", error);
-                    // Handle error
+
                 });
         }
 
@@ -64,6 +65,32 @@
             const responseDiv = document.getElementById("registerResponse");
             responseDiv.innerHTML = `<div class="${type}">${message}</div>`;
         }
+
+        function logUserAction(action, userID) {
+            fetch('http://localhost:8080/logUserAction', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    action: action,
+                    userID: userID,
+                }),
+            })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! Status: ${response.status}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    console.log(data);
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                });
+        }
+
     </script>
 </body>
 
