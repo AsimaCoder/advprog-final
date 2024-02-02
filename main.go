@@ -46,6 +46,7 @@ type Furniture struct {
 	Description string             `json:"description" bson:"description"`
 	Price       float64            `json:"price" bson:"price"`
 	Pictures    []Picture          `json:"pictures" bson:"pictures"`
+	Color       string             `json:"color" bson:"color,omitempty"`
 }
 
 type User struct {
@@ -84,6 +85,31 @@ func init() {
 	fmt.Println("Connected to MongoDB successfully!")
 
 	database = client.Database(databaseName)
+}
+func filterProductsHandler(c *gin.Context) {
+	color := c.Query("color")
+	if color == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Url Param 'color' is missing"})
+		return
+	}
+
+	var furnitureItems []Furniture
+	collection := client.Database(databaseName).Collection("furniture")
+	filter := bson.M{"color": color}
+
+	cursor, err := collection.Find(context.Background(), filter)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error querying furniture collection"})
+		return
+	}
+	defer cursor.Close(context.Background())
+
+	if err = cursor.All(context.Background(), &furnitureItems); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error getting furniture items"})
+		return
+	}
+
+	c.JSON(http.StatusOK, furnitureItems)
 }
 
 func registerUser(c *gin.Context) {
@@ -313,7 +339,6 @@ func addAgeField() error {
 
 	return err
 }
-
 func logUserAction(c *gin.Context, action string, userID string) {
 	logData := map[string]interface{}{
 		"timestamp": time.Now().Format(time.RFC3339),
@@ -326,7 +351,7 @@ func logUserAction(c *gin.Context, action string, userID string) {
 		fmt.Println("Error marshaling log data:", err)
 		return
 	}
-	file, err := os.OpenFile("C:\\Users\\anana\\OneDrive\\Рабочий стол\\advprog-final-main\\user_actions.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	file, err := os.OpenFile("C:\\Users\\Asus\\Downloads\\advprog-final-main with user\\user_actions.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		fmt.Println("Error opening log file:", err)
 		return
@@ -429,8 +454,8 @@ func main() {
 	r.POST("/register", registerUser)
 	r.POST("/login", loginUser)
 	r.GET("/furniture", getFurnitures)
+	r.GET("/filter", filterProductsHandler)
 	r.GET("/getUser", getUserByID)
-
 	r.POST("/submitOrder", submitOrder)
 	r.PUT("/updateUser", updateUser)
 	r.DELETE("/deleteUser", deleteUser)
