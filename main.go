@@ -421,7 +421,7 @@ func main() {
 	r.MaxMultipartMemory = 1024
 	r.Use(rateLimiter(limiter))
 
-	r.GET("/", func(c *gin.Context) {
+	r.GET("/2", func(c *gin.Context) {
 		c.String(http.StatusOK, "Request processed successfully")
 	})
 
