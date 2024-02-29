@@ -3,8 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="stylesheet" href="../style.css"> 
-
+    <link rel="stylesheet" href="../static/style.css">
     <title>Furniture - Online Furniture Shop</title>
     <style>
         #furniture-container {
@@ -466,10 +465,40 @@ function displayProducts(data) {
             <h2>${item.title}</h2>
             <p>${item.description}</p>
             <p>Price: ${item.price}</p>
+            <button class="btn btn-primary buy-btn" data-id="${item.id}">Купить</button>
         `;
         container.appendChild(div);
     });
 }
+  document.addEventListener('DOMContentLoaded', () => {
+      document.querySelectorAll('.buy-btn').forEach(button => {
+          button.addEventListener('click', function() {
+              const itemId = this.getAttribute('data-id');
+              addItemToCart(itemId);
+          });
+      });
+  });
+
+  function addItemToCart(itemId) {
+      const userID = getUserID(); // Убедитесь, что getUserID() корректно извлекает ID пользователя
+
+      fetch('/api/cart/add', {
+          method: 'POST',
+          headers: {
+              'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ userID, itemId }),
+      })
+          .then(response => response.json())
+          .then(data => {
+              console.log('Товар добавлен в корзину:', data);
+              // Здесь может быть код для обновления интерфейса корзины
+          })
+          .catch(error => {
+              console.error('Ошибка при добавлении в корзину:', error);
+          });
+  }
+
     </script> 
 </body>
 </html>
