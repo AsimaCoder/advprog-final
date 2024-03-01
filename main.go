@@ -2,14 +2,18 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"strconv"
 	"time"
 
+	"github.com/dgrijalva/jwt-go"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/sirupsen/logrus"
@@ -19,6 +23,7 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"golang.org/x/crypto/bcrypt"
 	"golang.org/x/time/rate"
+	"gopkg.in/gomail.v2"
 )
 
 const (
@@ -30,8 +35,10 @@ const (
 
 var client *mongo.Client
 var database *mongo.Database
+var usersCollection *mongo.Collection
 var logger = logrus.New()
 var limiter = rate.NewLimiter(1, 3)
+var jwtSecret = []byte("eyJhbGciOiJIUzI1NiJ9.eyJSb2xlIjoiQWRtaW4iLCJJc3N1ZXIiOiJJc3N1ZXIiLCJVc2VybmFtZSI6IkphdmFJblVzZSIsImV4cCI6MTcwOTI1NzI1OCwiaWF0IjoxNzA5MjU3MjU4fQ.Wfd29qNc7fk0nLB3eZsFr-DZBINmmRVL9b6dQVnws8w")
 
 type Picture struct {
 	Large  string `json:"large" bson:"large"`
@@ -50,10 +57,13 @@ type Furniture struct {
 }
 
 type User struct {
-	ID       primitive.ObjectID `json:"_id,omitempty" bson:"_id,omitempty"`
-	Name     string             `json:"Name"`
-	Email    string             `json:"Email"`
-	Password string             `json:"Password"`
+	ID           primitive.ObjectID `json:"_id,omitempty" bson:"_id,omitempty"`
+	Name         string             `json:"Name"`
+	Email        string             `json:"Email"`
+	Password     string             `json:"Password"`
+	Confirmed    bool               `json:"Confirmed"`
+	ConfirmToken string             `json:"ConfirmToken"`
+	Roles        []string           `json:"Roles"`
 }
 
 func init() {
@@ -86,6 +96,67 @@ func init() {
 
 	database = client.Database(databaseName)
 }
+func GenerateJWTToken(userID string, role string) (string, error) {
+
+	claims := jwt.MapClaims{
+		"userID": userID,
+		"role":   role,
+		"exp":    time.Now().Add(time.Hour * 24).Unix(),
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+
+	signedToken, err := token.SignedString(jwtSecret)
+	if err != nil {
+		return "", err
+	}
+
+	return signedToken, nil
+}
+func AuthMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		tokenString := c.GetHeader("Authorization")
+
+		if tokenString == "" {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+			c.Abort()
+			return
+		}
+
+		token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+			return jwtSecret, nil
+		})
+
+		if err != nil || !token.Valid {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+			c.Abort()
+			return
+		}
+
+		claims, ok := token.Claims.(jwt.MapClaims)
+		if !ok {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+			c.Abort()
+			return
+		}
+
+		c.Set("userID", claims["userID"].(string))
+		c.Set("role", claims["role"].(string))
+
+		c.Next()
+	}
+}
+func AuthorizedHandler(c *gin.Context) {
+	//userID := c.MustGet("userID").(string)
+	role := c.MustGet("role").(string)
+
+	if role != "admin" {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Permission denied"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "You are authorized"})
+}
+
 func filterProductsHandler(c *gin.Context) {
 	color := c.Query("color")
 	if color == "" {
@@ -111,6 +182,44 @@ func filterProductsHandler(c *gin.Context) {
 
 	c.JSON(http.StatusOK, furnitureItems)
 }
+func generateToken() string {
+	tokenLength := 32
+	randomBytes := make([]byte, tokenLength)
+	_, err := rand.Read(randomBytes)
+	if err != nil {
+		log.Fatal(err)
+	}
+	return base64.URLEncoding.EncodeToString(randomBytes)
+}
+func sendConfirmationEmail(email, confirmToken string) error {
+
+	sender := "ananasovich2002@gmail.com"
+	password := "zswzeyricvuquftk"
+	smtpServer := "smtp.gmail.com"
+	smtpPort := 587
+
+	message := gomail.NewMessage()
+
+	message.SetHeader("From", sender)
+
+	message.SetHeader("To", email)
+
+	message.SetHeader("Subject", "Confirmation Email")
+
+	confirmationLink := fmt.Sprintf("http://localhost:8080/confirm-user?token=%s", confirmToken)
+	message.SetBody("text/html", fmt.Sprintf("Click <a href='%s'>here</a> to confirm your registration.", confirmationLink))
+
+	dialer := gomail.NewDialer(smtpServer, smtpPort, sender, password)
+
+	err := dialer.DialAndSend(message)
+	if err != nil {
+		log.Fatal(err)
+		return err
+	}
+
+	fmt.Println("Confirmation email sent successfully.")
+	return nil
+}
 
 func registerUser(c *gin.Context) {
 	var user User
@@ -120,12 +229,17 @@ func registerUser(c *gin.Context) {
 		return
 	}
 
+	confirmToken := generateToken()
+
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(user.Password), bcrypt.DefaultCost)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error hashing password"})
 		return
 	}
 	user.Password = string(hashedPassword)
+
+	user.Confirmed = false
+	user.ConfirmToken = confirmToken
 
 	usersCollection := client.Database(databaseName).Collection(collectionName)
 	result, err := usersCollection.InsertOne(context.TODO(), user)
@@ -134,7 +248,95 @@ func registerUser(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "User registered successfully", "userID": result.InsertedID})
+	err = sendConfirmationEmail(user.Email, confirmToken)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error sending confirmation email"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "User registered successfully. Check your email for confirmation instructions.", "userID": result.InsertedID})
+}
+func confirmUser(c *gin.Context) {
+	token := c.Query("token")
+
+	if token == "" {
+		fmt.Println("Error: Token is required")
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Token is required"})
+		return
+	}
+
+	fmt.Println("Received confirmation token:", token)
+
+	user, err := findUserByToken(c, token)
+	if err != nil {
+		fmt.Println("Error finding user by token:", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal server error"})
+		return
+	}
+
+	if user == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "User not found with the given token"})
+		return
+	}
+
+	fmt.Println("Found user:", user)
+
+	if user.Confirmed {
+		fmt.Println("Error: User is already confirmed")
+		c.JSON(http.StatusBadRequest, gin.H{"error": "User is already confirmed"})
+		return
+	}
+
+	err = confirmUserInDatabase(c, user.ID)
+	if err != nil {
+		fmt.Println("Error confirming user:", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to confirm user"})
+		return
+	}
+
+	fmt.Println("User confirmed successfully")
+
+	c.HTML(http.StatusOK, "confirmation.html", gin.H{"Message": "User confirmed successfully"})
+}
+
+func findUserByToken(ctx context.Context, token string) (*User, error) {
+	var user User
+	err := usersCollection.FindOne(ctx, bson.M{"ConfirmToken": token}).Decode(&user)
+
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			return nil, fmt.Errorf("user not found with token: %v", token)
+		}
+
+		return nil, err
+	}
+
+	return &user, nil
+}
+
+func confirmUserInDatabase(ctx context.Context, userID primitive.ObjectID) error {
+	filter := bson.M{"_id": userID}
+	update := bson.M{"$set": bson.M{"Confirmed": true, "ConfirmToken": ""}}
+
+	_, err := usersCollection.UpdateOne(ctx, filter, update)
+	return err
+}
+
+func initMongoDB() {
+	clientOptions := options.Client().ApplyURI(mongoURI)
+	client, err := mongo.Connect(nil, clientOptions)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	err = client.Ping(nil, nil)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	client = client
+	database = client.Database(databaseName)
+	usersCollection = database.Collection(collectionName)
 }
 func updateUser(c *gin.Context) {
 	var updateData struct {
@@ -445,7 +647,7 @@ func main() {
 
 	r.MaxMultipartMemory = 1024
 	r.Use(rateLimiter(limiter))
-
+	r.LoadHTMLGlob("templates/*")
 	r.GET("/2", func(c *gin.Context) {
 		c.String(http.StatusOK, "Request processed successfully")
 	})
@@ -460,6 +662,8 @@ func main() {
 	r.PUT("/updateUser", updateUser)
 	r.DELETE("/deleteUser", deleteUser)
 	r.GET("/getAllUsers", getAllUsers)
+	r.GET("/protected-route", AuthMiddleware(), AuthorizedHandler)
+	r.GET("/confirm-user", confirmUser)
 
 	r.Static("/static", "./static/")
 	r.StaticFS("/auth", http.Dir("auth"))
