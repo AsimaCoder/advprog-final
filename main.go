@@ -26,8 +26,9 @@ import (
 	"gopkg.in/gomail.v2"
 )
 
+// "mongodb://localhost:27017"
 const (
-	mongoURI        = "mongodb://localhost:27017"
+	mongoURI        = "mongodb+srv://ananasovich2002:87787276658Aa.@cluster0.80wl48q.mongodb.net/backend"
 	databaseName    = "furnitureShopDB"
 	collectionName  = "users"
 	collectionName2 = "furniture"
@@ -64,6 +65,9 @@ type User struct {
 	Confirmed    bool               `json:"Confirmed"`
 	ConfirmToken string             `json:"ConfirmToken"`
 	Roles        []string           `json:"Roles"`
+	Phone        string             `json:"Phone"`
+	Tariff       string             `json:"Tariff"`
+	NewPassword  string             `json:"NewPassword"`
 }
 
 func init() {
@@ -381,6 +385,47 @@ func updateUser(c *gin.Context) {
 		bson.M{"_id": objID},
 		bson.M{"$set": bson.M{"name": updateData.Name, "email": updateData.Email}},
 	)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error updating user"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "User updated successfully"})
+}
+func updateUserHandler(c *gin.Context) {
+	var updateData struct {
+		ID          string `json:"id"`
+		Name        string `json:"name"`
+		Email       string `json:"email"`
+		Phone       string `json:"phone"`
+		Tariff      string `json:"tariff"`
+		NewPassword string `json:"newPassword"`
+	}
+
+	if err := c.ShouldBindJSON(&updateData); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	objID, err := primitive.ObjectIDFromHex(updateData.ID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
+		return
+	}
+
+	usersCollection := database.Collection(collectionName)
+	filter := bson.M{"_id": objID}
+	update := bson.M{
+		"$set": bson.M{
+			"name":        updateData.Name,
+			"email":       updateData.Email,
+			"phone":       updateData.Phone,
+			"tariff":      updateData.Tariff,
+			"newPassword": updateData.NewPassword,
+		},
+	}
+
+	_, err = usersCollection.UpdateOne(context.Background(), filter, update)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error updating user"})
 		return
@@ -766,6 +811,7 @@ func main() {
 	r.GET("/confirm-user", confirmUser)
 	r.GET("/users", AuthMiddleware("admin"), getUsersHandler)
 	r.GET("/profile", AuthMiddleware("user"), userProfileHandler)
+	r.POST("/update", AuthMiddleware("user"), updateUserHandler)
 
 	r.Static("/static", "./static/")
 	r.StaticFS("/auth", http.Dir("auth"))
@@ -902,6 +948,7 @@ func loginUser(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error generating JWT token"})
 		return
 	}
+	fmt.Println("Generated Token:", token)
 
 	c.JSON(http.StatusOK, gin.H{"message": "Login successful", "token": token})
 }
