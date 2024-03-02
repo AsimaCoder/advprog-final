@@ -96,24 +96,8 @@ func init() {
 
 	database = client.Database(databaseName)
 }
-func GenerateJWTToken(userID string, role string) (string, error) {
 
-	claims := jwt.MapClaims{
-		"userID": userID,
-		"role":   role,
-		"exp":    time.Now().Add(time.Hour * 24).Unix(),
-	}
-
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-
-	signedToken, err := token.SignedString(jwtSecret)
-	if err != nil {
-		return "", err
-	}
-
-	return signedToken, nil
-}
-func AuthMiddleware() gin.HandlerFunc {
+func AuthMiddleware(requiredRole ...string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		tokenString := c.GetHeader("Authorization")
 
@@ -143,11 +127,28 @@ func AuthMiddleware() gin.HandlerFunc {
 		c.Set("userID", claims["userID"].(string))
 		c.Set("role", claims["role"].(string))
 
+		if len(requiredRole) > 0 {
+			userRole := claims["role"].(string)
+			roleMatch := false
+			for _, r := range requiredRole {
+				if userRole == r {
+					roleMatch = true
+					break
+				}
+			}
+
+			if !roleMatch {
+				c.JSON(http.StatusForbidden, gin.H{"error": "Permission denied"})
+				c.Abort()
+				return
+			}
+		}
+
 		c.Next()
 	}
 }
+
 func AuthorizedHandler(c *gin.Context) {
-	//userID := c.MustGet("userID").(string)
 	role := c.MustGet("role").(string)
 
 	if role != "admin" {
@@ -155,6 +156,23 @@ func AuthorizedHandler(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "You are authorized"})
+}
+
+func GenerateJWTToken(userID string, role string) (string, error) {
+	claims := jwt.MapClaims{
+		"userID": userID,
+		"role":   role,
+		"exp":    time.Now().Add(time.Hour * 24).Unix(),
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+
+	signedToken, err := token.SignedString(jwtSecret)
+	if err != nil {
+		return "", err
+	}
+
+	return signedToken, nil
 }
 
 func filterProductsHandler(c *gin.Context) {
@@ -228,6 +246,8 @@ func registerUser(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+
+	user.Roles = []string{"user"}
 
 	confirmToken := generateToken()
 
@@ -530,6 +550,86 @@ func createUsersCollection() error {
 	return err
 }
 
+func getUsersHandler(c *gin.Context) {
+	role := c.MustGet("role").(string)
+	if role != "admin" {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Permission denied"})
+		return
+	}
+
+	var users []User
+	usersCollection := database.Collection(collectionName)
+	cursor, err := usersCollection.Find(context.Background(), bson.M{})
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error fetching users"})
+		return
+	}
+	defer cursor.Close(context.Background())
+
+	for cursor.Next(context.Background()) {
+		var user User
+		cursor.Decode(&user)
+		users = append(users, user)
+	}
+
+	c.JSON(http.StatusOK, users)
+}
+
+func userProfileHandler(c *gin.Context) {
+	userID := c.MustGet("userID").(string)
+
+	requestedUserID := c.Param("userID")
+	role := c.MustGet("role").(string)
+	if role != "admin" && userID != requestedUserID {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Permission denied"})
+		return
+	}
+
+	switch c.Request.Method {
+	case http.MethodGet:
+		var user User
+		usersCollection := database.Collection(collectionName)
+		err := usersCollection.FindOne(context.Background(), bson.M{"_id": userID}).Decode(&user)
+		if err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+			return
+		}
+
+		c.JSON(http.StatusOK, user)
+
+	case http.MethodPut:
+		var updateData struct {
+			Name     string `json:"name"`
+			Email    string `json:"email"`
+			Password string `json:"password"`
+		}
+		if err := c.ShouldBindJSON(&updateData); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		filter := bson.M{"_id": userID}
+		update := bson.M{"$set": bson.M{"name": updateData.Name, "email": updateData.Email}}
+
+		if updateData.Password != "" {
+			hashedPassword, err := bcrypt.GenerateFromPassword([]byte(updateData.Password), bcrypt.DefaultCost)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Error hashing password"})
+				return
+			}
+			update["$set"].(bson.M)["password"] = string(hashedPassword)
+		}
+
+		_, err := usersCollection.UpdateOne(context.Background(), filter, update)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error updating user profile"})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{"message": "User profile updated successfully"})
+	}
+}
+
 func addAgeField() error {
 	usersCollection := database.Collection(collectionName)
 
@@ -664,6 +764,8 @@ func main() {
 	r.GET("/getAllUsers", getAllUsers)
 	r.GET("/protected-route", AuthMiddleware(), AuthorizedHandler)
 	r.GET("/confirm-user", confirmUser)
+	r.GET("/users", AuthMiddleware("admin"), getUsersHandler)
+	r.GET("/profile", AuthMiddleware("user"), userProfileHandler)
 
 	r.Static("/static", "./static/")
 	r.StaticFS("/auth", http.Dir("auth"))
@@ -764,7 +866,6 @@ func getUserByID(c *gin.Context) {
 	c.JSON(http.StatusOK, user)
 }
 
-// login_page
 func loginUser(c *gin.Context) {
 	var loginRequest struct {
 		Email    string `json:"email"`
@@ -790,7 +891,19 @@ func loginUser(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "Login successful"})
+	isAdmin := (user.Email == "admin@example.com" && user.Password == "adminpassword")
+
+	if isAdmin {
+		user.Roles = []string{"admin"}
+	}
+
+	token, err := GenerateJWTToken(user.ID.Hex(), user.Roles[0])
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error generating JWT token"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Login successful", "token": token})
 }
 
 // ind_page
