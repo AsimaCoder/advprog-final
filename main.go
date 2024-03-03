@@ -29,7 +29,7 @@ import (
 
 // "mongodb://localhost:27017"
 const (
-	mongoURI        = "mongodb+srv://ananasovich2002:87787276658Aa.@cluster0.80wl48q.mongodb.net/furnitureShopDB"
+	mongoURI        = "mongodb+srv://assima_myrz:Ny3JCiBmeVO7TkRv@cluster.eccvy8x.mongodb.net/"
 	databaseName    = "furnitureShopDB"
 	collectionName  = "users"
 	collectionName2 = "furniture"
