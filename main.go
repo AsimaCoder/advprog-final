@@ -9,6 +9,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/smtp"
 	"os"
 	"strconv"
 	"time"
@@ -32,6 +33,12 @@ const (
 	databaseName    = "furnitureShopDB"
 	collectionName  = "users"
 	collectionName2 = "furniture"
+)
+const (
+	smtpHost     = "smtp.gmail.com"
+	smtpPort     = 587
+	smtpEmail    = "ananasovich2002@gmail.com"
+	smtpPassword = "zswzeyricvuquftk"
 )
 
 var client *mongo.Client
@@ -203,6 +210,19 @@ func filterProductsHandler(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, furnitureItems)
+}
+func sendEmail(to, subject, body string) error {
+	from := smtpEmail
+	message := fmt.Sprintf("From: %s\r\nTo: %s\r\nSubject: %s\r\n\r\n%s", from, to, subject, body)
+
+	auth := smtp.PlainAuth("", smtpEmail, smtpPassword, smtpHost)
+
+	err := smtp.SendMail(fmt.Sprintf("%s:%d", smtpHost, smtpPort), auth, from, []string{to}, []byte(message))
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 func generateToken() string {
 	tokenLength := 32
@@ -380,6 +400,16 @@ func updateUser(c *gin.Context) {
 	}
 
 	usersCollection := database.Collection(collectionName)
+
+	var user struct {
+		Email string `bson:"email"`
+	}
+	err = usersCollection.FindOne(context.Background(), bson.M{"_id": objID}).Decode(&user)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error retrieving user"})
+		return
+	}
+
 	_, err = usersCollection.UpdateOne(
 		context.Background(),
 		bson.M{"_id": objID},
@@ -390,7 +420,18 @@ func updateUser(c *gin.Context) {
 		return
 	}
 
+	err = sendUpdateUserEmail(user.Email)
+	if err != nil {
+		fmt.Println("Error sending update user email:", err)
+	}
+
 	c.JSON(http.StatusOK, gin.H{"message": "User updated successfully"})
+}
+
+func sendUpdateUserEmail(to string) error {
+	subject := "Account Update Notification"
+	body := "Your account information has been updated."
+	return sendEmail(to, subject, body)
 }
 func updateUserHandler(c *gin.Context) {
 	var updateData struct {
@@ -443,13 +484,34 @@ func deleteUser(c *gin.Context) {
 	}
 
 	usersCollection := database.Collection(collectionName)
+
+	var user struct {
+		Email string `bson:"email"`
+	}
+	err = usersCollection.FindOne(context.Background(), bson.M{"_id": objID}).Decode(&user)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error retrieving user"})
+		return
+	}
+
 	_, err = usersCollection.DeleteOne(context.Background(), bson.M{"_id": objID})
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error deleting user"})
 		return
 	}
 
+	err = sendDeleteUserEmail(user.Email)
+	if err != nil {
+		fmt.Println("Error sending delete user email:", err)
+	}
+
 	c.JSON(http.StatusOK, gin.H{"message": "User deleted successfully"})
+}
+
+func sendDeleteUserEmail(to string) error {
+	subject := "Account Deletion Notification"
+	body := "Your account has been deleted."
+	return sendEmail(to, subject, body)
 }
 
 func getAllUsers(c *gin.Context) {
@@ -953,7 +1015,6 @@ func loginUser(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Login successful", "token": token})
 }
 
-// ind_page
 func submitOrder(c *gin.Context) {
 	var order map[string]interface{}
 	err := c.ShouldBindJSON(&order)
