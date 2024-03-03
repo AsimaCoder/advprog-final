@@ -28,11 +28,7 @@ import (
 )
 
 // 
-const (
-	databaseName    = "furnitureShopDB"
-	collectionName  = "users"
-	collectionName2 = "furniture"
-)
+
 const (
 	smtpHost     = "smtp.gmail.com"
 	smtpPort     = 587
