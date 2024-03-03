@@ -28,7 +28,12 @@ import (
 )
 
 // 
-
+const (
+	mongoURI        = "mongodb+srv://assima_myrz:Ny3JCiBmeVO7TkRv@cluster.eccvy8x.mongodb.net/"
+	databaseName    = "furnitureShopDB"
+	collectionName  = "users"
+	collectionName2 = "furniture"
+)
 const (
 	smtpHost     = "smtp.gmail.com"
 	smtpPort     = 587
