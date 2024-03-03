@@ -27,9 +27,9 @@ import (
 	"gopkg.in/gomail.v2"
 )
 
-// "mongodb://localhost:27017"
+// 
 const (
-	mongoURI        = "mongodb+srv://assima_myrz:Ny3JCiBmeVO7TkRv@cluster.eccvy8x.mongodb.net/"
+	mongoURI        = "mongodb://localhost:27017"
 	databaseName    = "furnitureShopDB"
 	collectionName  = "users"
 	collectionName2 = "furniture"
